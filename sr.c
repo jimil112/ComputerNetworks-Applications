@@ -276,7 +276,12 @@ void B_init(void)
 {
   expectedseqnum = 0;
   B_nextseqnum = 1;
+
+  for (int i = 0; i < SEQSPACE; i++) {
+    received[i] = false;
+  }
 }
+
 
 /******************************************************************************
  * The following functions need be completed only for bi-directional messages *
