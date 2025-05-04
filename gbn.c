@@ -61,6 +61,7 @@ static struct pkt buffer[SEQSPACE];  /* array for storing packets waiting for AC
 static int windowfirst, windowlast;    /* array indexes of the first/last packet awaiting ACK */
 static int windowcount;                /* the number of packets currently awaiting an ACK */
 static int A_nextseqnum;               /* the next sequence number to be used by the sender */
+static bool acked[SEQSPACE];           /* track which packets have been ACKed */
 
 /* called from layer 5 (application layer), passed the message to be sent to other side */
 void A_output(struct msg message)
@@ -82,6 +83,7 @@ void A_output(struct msg message)
 
     /* put packet in window buffer */
     buffer[A_nextseqnum % SEQSPACE] = sendpkt;
+    acked[A_nextseqnum % SEQSPACE] = false;
     windowcount++;
 
     /* send out packet */
@@ -119,10 +121,12 @@ void A_input(struct pkt packet)
       printf("----A: uncorrupted ACK %d is received\n",packet.acknum);
     total_ACKs_received++;
 
+    acked[packet.acknum % SEQSPACE] = true; 
+
     /* check if new ACK or duplicate */
     if (windowcount != 0) {
           int seqfirst = buffer[windowfirst % SEQSPACE].seqnum;
-          int seqlast = buffer[windowlast % SEQSPACE].seqnum;
+          int seqlast = buffer[(windowfirst + windowcount - 1) % SEQSPACE].seqnum;
           /* check case when seqnum has and hasn't wrapped */
           if (((seqfirst <= seqlast) && (packet.acknum >= seqfirst && packet.acknum <= seqlast)) ||
               ((seqfirst > seqlast) && (packet.acknum >= seqfirst || packet.acknum <= seqlast))) {
@@ -136,7 +140,7 @@ void A_input(struct pkt packet)
             if (packet.acknum >= seqfirst)
               ackcount = packet.acknum + 1 - seqfirst;
             else
-              ackcount = SEQSPACE - seqfirst + packet.acknum;
+              ackcount = SEQSPACE - seqfirst + packet.acknum + 1;
 
 	    /* slide window by the number of packets ACKed */
             windowfirst = (windowfirst + ackcount) % SEQSPACE;
@@ -170,7 +174,6 @@ void A_timerinterrupt(void)
     printf("----A: time out,resend packets!\n");
 
   for(i=0; i<windowcount; i++) {
-
     if (TRACE > 0)
       printf ("---A: resending packet %d\n", (buffer[(windowfirst+i) % SEQSPACE]).seqnum);
 
@@ -186,6 +189,7 @@ void A_timerinterrupt(void)
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
+  int i;
   /* initialise A's window, buffer and sequence number */
   A_nextseqnum = 0;  /* A starts with seq num 0, do not change this */
   windowfirst = 0;
@@ -194,8 +198,11 @@ void A_init(void)
 		     so initially this is set to -1
 		   */
   windowcount = 0;
-}
 
+  for (i = 0; i < SEQSPACE; i++) {
+    acked[i] = false;
+  }
+}
 
 
 /********* Receiver (B)  variables and procedures ************/
