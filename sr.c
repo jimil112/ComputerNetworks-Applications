@@ -171,13 +171,29 @@ void A_input(struct pkt packet)
 /* called when A's timer goes off */
 void A_timerinterrupt(void)
 {
-  if (TRACE > 0)
-    printf("----A: timer interrupt, resending base packet %d\n", windowfirst);
+  int i;
+  int resend_seq = -1;
 
-  tolayer3(A, buffer[windowfirst]);
-  packets_resent++;
-  starttimer(A, RTT);
+  if (TRACE > 0)
+    printf("----A: timer interrupt, scanning for packet to resend\n");
+
+  for (i = 0; i < SEQSPACE; i++) {
+    int seq = (windowfirst + i) % SEQSPACE;
+    if (timer_active[seq] && !acked[seq]) {
+      resend_seq = seq;
+      break;
+    }
+  }
+
+  if (resend_seq != -1) {
+    if (TRACE > 0)
+      printf("----A: resending packet %d\n", resend_seq);
+    tolayer3(A, buffer[resend_seq]);
+    packets_resent++;
+    starttimer(A, RTT);
+  }
 }
+
 
 
 
