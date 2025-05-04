@@ -62,9 +62,9 @@ static struct pkt buffer[WINDOWSIZE];  /* array for storing packets waiting for 
 static int windowfirst, windowlast;    /* array indexes of the first/last packet awaiting ACK */
 static int windowcount;                /* the number of packets currently awaiting an ACK */
 static int A_nextseqnum;               /* the next sequence number to be used by the sender */
-static int acked[SEQSPACE];   
-static float time_sent[SEQSPACE]; 
-static int timer_active[SEQSPACE];           
+static int acked[SEQSPACE];            /* array to track if a packet was acknowledged */
+static float time_sent[SEQSPACE];      /* array to store the time each packet was sent */
+static int timer_active[SEQSPACE];     /* array to track which timers are active */
 
 /* called from layer 5 (application layer), passed the message to be sent to other side */
 void A_output(struct msg message)
@@ -74,21 +74,27 @@ void A_output(struct msg message)
   int any_timer_running;
 
   if (((A_nextseqnum - windowfirst + SEQSPACE) % SEQSPACE) < WINDOWSIZE) {
+    if (TRACE > 1)
+      printf("----A: New message arrives, send window is not full, send new messge to layer3!\n");
 
+    /* create packet */
     sendpkt.seqnum = A_nextseqnum;
     sendpkt.acknum = NOTINUSE;
     for (i = 0; i < 20; i++)
       sendpkt.payload[i] = message.data[i];
     sendpkt.checksum = ComputeChecksum(sendpkt);
 
+    /* buffer and track the packet */
     buffer[A_nextseqnum] = sendpkt;
     acked[A_nextseqnum] = FALSE;
     timer_active[A_nextseqnum] = TRUE;
 
-    tolayer3(A, sendpkt);
+    /* send packet to network layer */
     if (TRACE > 0)
       printf("Sending packet %d to layer 3\n", sendpkt.seqnum);
+    tolayer3(A, sendpkt);
 
+    /* start timer if no timer is running */
     any_timer_running = FALSE;
     for (j = 0; j < SEQSPACE; j++) {
       if (timer_active[j]) {
@@ -143,26 +149,23 @@ void A_input(struct pkt packet)
         else
           ackcount = SEQSPACE - seqfirst + packet.acknum;
 
-	/* slide window by the number of packets ACKed */
+        /* slide window by the number of packets ACKed */
         windowfirst = (windowfirst + ackcount) % WINDOWSIZE;
 
         /* delete the acked packets from window buffer */
         for (i = 0; i < ackcount; i++)
           windowcount--;
 
-	/* start timer again if there are still more unacked packets in window */
+        /* start timer again if there are still more unacked packets in window */
         stoptimer(A);
         if (windowcount > 0)
           starttimer(A, RTT);
-
       }
-    }
-    else {
+    } else {
       if (TRACE > 0)
         printf("----A: duplicate ACK received, do nothing!\n");
     }
-  }
-  else {
+  } else {
     if (TRACE > 0)
       printf("----A: corrupted ACK is received, do nothing!\n");
   }
@@ -175,25 +178,19 @@ void A_timerinterrupt(void)
   resend_seq = -1;
 
   if (TRACE > 0)
-    printf("----A: timer interrupt, scanning for packet to resend\n");
+    printf("----A: time out,resend packets!\n");
 
-  for (i = 0; i < SEQSPACE; i++) {
+  /* resend first unACKed packet */
+  for (i = 0; i < windowcount; i++) {
     seq = (windowfirst + i) % SEQSPACE;
     if (timer_active[seq] && !acked[seq]) {
       resend_seq = seq;
-      break;
+      if (TRACE > 0)
+        printf("---A: resending packet %d\n", resend_seq);
+      tolayer3(A, buffer[resend_seq]);
+      packets_resent++;
+      if (i == 0) starttimer(A, RTT);
     }
-  }
-
-  if (resend_seq != -1) {
-    if (TRACE > 0)
-      printf("----A: resending packet %d\n", resend_seq);
-    tolayer3(A, buffer[resend_seq]);
-    packets_resent++;
-    starttimer(A, RTT);
-  } else {
-    if (TRACE > 0)
-      printf("----A: no unACKed packet found, no retransmission needed\n");
   }
 }
 
@@ -228,37 +225,43 @@ void B_input(struct pkt packet)
   struct pkt ackpkt;
   int i, seq;
 
-  if (!IsCorrupted(packet)) {
-    seq = packet.seqnum;
-
-    if (!received[seq]) {
-      received[seq] = TRUE;
-      bufferB[seq] = packet;
-    }
-
-    ackpkt.seqnum = B_nextseqnum;
-    ackpkt.acknum = seq;
-    B_nextseqnum = (B_nextseqnum + 1) % 2;
-
-    for (i = 0; i < 20; i++)
-      ackpkt.payload[i] = '0';
-
-    ackpkt.checksum = ComputeChecksum(ackpkt);
-    tolayer3(B, ackpkt);
-
+  /* if not corrupted and received packet is in order */
+  if (!IsCorrupted(packet) && packet.seqnum == expectedseqnum) {
     if (TRACE > 0)
-      printf("----B: ACK %d sent\n", seq);
+      printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
+    packets_received++;
 
-    while (received[expectedseqnum]) {
-      tolayer5(B, bufferB[expectedseqnum].payload);
-      received[expectedseqnum] = FALSE;
-      expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
-      packets_received++;
-    }
+    /* deliver to receiving application */
+    tolayer5(B, packet.payload);
+
+    /* send an ACK for the received packet */
+    ackpkt.acknum = expectedseqnum;
+
+    /* update state variables */
+    expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
   } else {
+    /* packet is corrupted or out of order resend last ACK */
     if (TRACE > 0)
-      printf("----B: corrupted packet received, ignoring\n");
+      printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
+    if (expectedseqnum == 0)
+      ackpkt.acknum = SEQSPACE - 1;
+    else
+      ackpkt.acknum = expectedseqnum - 1;
   }
+
+  /* create packet */
+  ackpkt.seqnum = B_nextseqnum;
+  B_nextseqnum = (B_nextseqnum + 1) % 2;
+
+  /* we don't have any data to send.  fill payload with 0's */
+  for (i = 0; i < 20; i++)
+    ackpkt.payload[i] = '0';
+
+  /* compute checksum */
+  ackpkt.checksum = ComputeChecksum(ackpkt);
+
+  /* send out packet */
+  tolayer3(B, ackpkt);
 }
 
 /* the following routine will be called once (only) before any other */
@@ -273,10 +276,6 @@ void B_init(void)
     received[i] = FALSE;
   }
 }
-
-/******************************************************************************
- * The following functions need be completed only for bi-directional messages *
- *****************************************************************************/
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 void B_output(struct msg message)
