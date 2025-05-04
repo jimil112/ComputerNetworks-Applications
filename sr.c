@@ -215,44 +215,52 @@ static int B_nextseqnum;   /* the sequence number for the next packets sent by B
 void B_input(struct pkt packet)
 {
   struct pkt ackpkt;
-  int i;
+  int i, seq;
 
+  /* if not corrupted and received packet is in order */
   if (!IsCorrupted(packet)) {
-    if (TRACE > 0)
-      printf("----B: packet %d correctly received\n", packet.seqnum);
-    packets_received++;
-
-    /* buffer the packet */
     if (!received[packet.seqnum]) {
-      bufferB[packet.seqnum] = packet;
       received[packet.seqnum] = TRUE;
+      bufferB[packet.seqnum] = packet;
+
+      if (TRACE > 0)
+        printf("----B: packet %d is correctly received\n", packet.seqnum);
     }
 
-    /* deliver all in-sequence packets to layer 5 */
+    /* deliver in-order packets starting from expectedseqnum */
     while (received[expectedseqnum]) {
-      tolayer5(B, bufferB[expectedseqnum].payload);
       if (TRACE > 0)
-        printf("----B: data %d delivered to application layer\n", expectedseqnum);
+        printf("----B: packet %d delivered to application layer\n", expectedseqnum);
+
+      tolayer5(B, bufferB[expectedseqnum].payload);
       received[expectedseqnum] = FALSE;
       expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
+      packets_received++;
     }
 
-    /* send ACK for this packet */
-    ackpkt.acknum = packet.seqnum;
+    ackpkt.acknum = (expectedseqnum + SEQSPACE - 1) % SEQSPACE;
   } else {
+   
     if (TRACE > 0)
-      printf("----B: corrupted packet received, sending last ACK again\n");
-    ackpkt.acknum = (expectedseqnum == 0) ? SEQSPACE - 1 : expectedseqnum - 1;
+      printf("----B: packet corrupted, resend ACK!\n");
+    ackpkt.acknum = (expectedseqnum + SEQSPACE - 1) % SEQSPACE;
   }
 
+  /* create packet */
   ackpkt.seqnum = B_nextseqnum;
   B_nextseqnum = (B_nextseqnum + 1) % 2;
+
+  
   for (i = 0; i < 20; i++)
     ackpkt.payload[i] = '0';
+
+  /* compute checksum */
   ackpkt.checksum = ComputeChecksum(ackpkt);
 
+  /* send out packet */
   tolayer3(B, ackpkt);
 }
+
 
 
 /* the following routine will be called once (only) before any other */
