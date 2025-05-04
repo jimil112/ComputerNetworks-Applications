@@ -61,6 +61,9 @@ static struct pkt buffer[WINDOWSIZE];  /* array for storing packets waiting for 
 static int windowfirst, windowlast;    /* array indexes of the first/last packet awaiting ACK */
 static int windowcount;                /* the number of packets currently awaiting an ACK */
 static int A_nextseqnum;               /* the next sequence number to be used by the sender */
+static bool acked[SEQSPACE];   
+static float time_sent[SEQSPACE]; 
+static bool timer_active[SEQSPACE];           
 
 /* called from layer 5 (application layer), passed the message to be sent to other side */
 void A_output(struct msg message)
@@ -188,17 +191,17 @@ void A_timerinterrupt(void)
 /* entity A routines are called. You can use it to do any initialization */
 void A_init(void)
 {
-  /* initialise A's window, buffer and sequence number */
-  A_nextseqnum = 0;  /* A starts with seq num 0, do not change this */
+  A_nextseqnum = 0;
   windowfirst = 0;
-  windowlast = -1;   /* windowlast is where the last packet sent is stored.
-		     new packets are placed in winlast + 1
-		     so initially this is set to -1
-		   */
+  windowlast = -1;
   windowcount = 0;
+
+  for (int i = 0; i < SEQSPACE; i++) {
+    acked[i] = false;
+    time_sent[i] = 0.0;
+    timer_active[i] = false;
+  }
 }
-
-
 
 /********* Receiver (B)  variables and procedures ************/
 
