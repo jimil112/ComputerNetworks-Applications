@@ -265,8 +265,10 @@ void B_init(void)
 
   for (i = 0; i < SEQSPACE; i++) {
     received[i] = FALSE;
+    bufferB[i].seqnum = NOTINUSE;
   }
 }
+
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 void B_output(struct msg message)
