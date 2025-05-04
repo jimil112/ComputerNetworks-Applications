@@ -215,50 +215,44 @@ static int B_nextseqnum;   /* the sequence number for the next packets sent by B
 void B_input(struct pkt packet)
 {
   struct pkt ackpkt;
-  int i, seq;
+  int i;
 
-  /* if not corrupted and received packet is in order */
-  if (!IsCorrupted(packet) && packet.seqnum == expectedseqnum) {
+  if (!IsCorrupted(packet)) {
     if (TRACE > 0)
-      printf("----B: packet %d is correctly received, send ACK!\n", packet.seqnum);
+      printf("----B: packet %d correctly received\n", packet.seqnum);
     packets_received++;
 
-    /* deliver to receiving application */
-    tolayer5(B, packet.payload);
+    /* buffer the packet */
+    if (!received[packet.seqnum]) {
+      bufferB[packet.seqnum] = packet;
+      received[packet.seqnum] = TRUE;
+    }
 
-    if (TRACE > 0)
-      printf("----B: data delivered to application layer\n");
+    /* deliver all in-sequence packets to layer 5 */
+    while (received[expectedseqnum]) {
+      tolayer5(B, bufferB[expectedseqnum].payload);
+      if (TRACE > 0)
+        printf("----B: data %d delivered to application layer\n", expectedseqnum);
+      received[expectedseqnum] = FALSE;
+      expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
+    }
 
-    /* send an ACK for the received packet */
-    ackpkt.acknum = expectedseqnum;
-
-    /* update state variables */
-    expectedseqnum = (expectedseqnum + 1) % SEQSPACE;
+    /* send ACK for this packet */
+    ackpkt.acknum = packet.seqnum;
   } else {
-    /* packet is corrupted or out of order resend last ACK */
     if (TRACE > 0)
-      printf("----B: packet corrupted or not expected sequence number, resend ACK!\n");
-    if (expectedseqnum == 0)
-      ackpkt.acknum = SEQSPACE - 1;
-    else
-      ackpkt.acknum = expectedseqnum - 1;
+      printf("----B: corrupted packet received, sending last ACK again\n");
+    ackpkt.acknum = (expectedseqnum == 0) ? SEQSPACE - 1 : expectedseqnum - 1;
   }
 
-  /* create packet */
   ackpkt.seqnum = B_nextseqnum;
   B_nextseqnum = (B_nextseqnum + 1) % 2;
-
-  /* we don't have any data to send.  fill payload with 0's */
   for (i = 0; i < 20; i++)
     ackpkt.payload[i] = '0';
-
-  /* compute checksum */
   ackpkt.checksum = ComputeChecksum(ackpkt);
 
-  /* send out packet */
   tolayer3(B, ackpkt);
 }
-
 
 
 /* the following routine will be called once (only) before any other */
