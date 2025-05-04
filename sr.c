@@ -98,8 +98,27 @@ void A_input(struct pkt packet)
     if (TRACE > 0)
       printf("----A: uncorrupted ACK %d is received\n", packet.acknum);
     total_ACKs_received++;
-    new_ACKs++;
-    /* Per-packet ACK processing will be added in Step 3 */
+
+    int acknum = packet.acknum;
+
+    if (!packet_acked[acknum]) {
+      packet_acked[acknum] = true;
+      new_ACKs++;
+
+      while (packet_acked[base]) {
+        packet_acked[base] = false;
+        packet_sent[base] = false;
+        base = (base + 1) % SEQSPACE;
+      }
+
+      stoptimer(A);
+      if (base != nextseqnum) {
+        starttimer(A, RTT);
+      }
+    } else {
+      if (TRACE > 0)
+        printf("----A: duplicate ACK %d received, ignoring\n", acknum);
+    }
   } else {
     if (TRACE > 0)
       printf("----A: corrupted ACK is received, ignoring.\n");
@@ -111,8 +130,20 @@ void A_input(struct pkt packet)
 void A_timerinterrupt(void)
 {
   if (TRACE > 0)
-    printf("----A: timer interrupt, to be handled in Step 3\n");
-  /* In Step 3 we’ll selectively retransmit only timed-out packets */
+    printf("----A: Timer interrupt, resending all unACKed packets in window\n");
+
+  for (int i = 0; i < WINDOWSIZE; i++) {
+    int seq = (base + i) % SEQSPACE;
+
+    if (packet_sent[seq] && !packet_acked[seq]) {
+      tolayer3(A, send_buffer[seq]);
+      packets_resent++;
+      if (TRACE > 0)
+        printf("----A: Resent packet %d\n", seq);
+    }
+  }
+
+  starttimer(A, RTT);
 }
 
 
