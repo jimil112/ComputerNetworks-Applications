@@ -57,7 +57,7 @@ bool IsCorrupted(struct pkt packet)
 
 /********* Sender (A) variables and functions ************/
 
-static struct pkt buffer[WINDOWSIZE];  /* array for storing packets waiting for ACK */
+static struct pkt buffer[SEQSPACE];  /* array for storing packets waiting for ACK */
 static int windowfirst, windowlast;    /* array indexes of the first/last packet awaiting ACK */
 static int windowcount;                /* the number of packets currently awaiting an ACK */
 static int A_nextseqnum;               /* the next sequence number to be used by the sender */
@@ -81,9 +81,7 @@ void A_output(struct msg message)
     sendpkt.checksum = ComputeChecksum(sendpkt);
 
     /* put packet in window buffer */
-    /* windowlast will always be 0 for alternating bit; but not for GoBackN */
-    windowlast = (windowlast + 1) % WINDOWSIZE;
-    buffer[windowlast] = sendpkt;
+    buffer[A_nextseqnum % SEQSPACE] = sendpkt;
     windowcount++;
 
     /* send out packet */
@@ -123,8 +121,8 @@ void A_input(struct pkt packet)
 
     /* check if new ACK or duplicate */
     if (windowcount != 0) {
-          int seqfirst = buffer[windowfirst].seqnum;
-          int seqlast = buffer[windowlast].seqnum;
+          int seqfirst = buffer[windowfirst % SEQSPACE].seqnum;
+          int seqlast = buffer[windowlast % SEQSPACE].seqnum;
           /* check case when seqnum has and hasn't wrapped */
           if (((seqfirst <= seqlast) && (packet.acknum >= seqfirst && packet.acknum <= seqlast)) ||
               ((seqfirst > seqlast) && (packet.acknum >= seqfirst || packet.acknum <= seqlast))) {
@@ -141,7 +139,7 @@ void A_input(struct pkt packet)
               ackcount = SEQSPACE - seqfirst + packet.acknum;
 
 	    /* slide window by the number of packets ACKed */
-            windowfirst = (windowfirst + ackcount) % WINDOWSIZE;
+            windowfirst = (windowfirst + ackcount) % SEQSPACE;
 
             /* delete the acked packets from window buffer */
             for (i=0; i<ackcount; i++)
@@ -174,9 +172,9 @@ void A_timerinterrupt(void)
   for(i=0; i<windowcount; i++) {
 
     if (TRACE > 0)
-      printf ("---A: resending packet %d\n", (buffer[(windowfirst+i) % WINDOWSIZE]).seqnum);
+      printf ("---A: resending packet %d\n", (buffer[(windowfirst+i) % SEQSPACE]).seqnum);
 
-    tolayer3(A,buffer[(windowfirst+i) % WINDOWSIZE]);
+    tolayer3(A,buffer[(windowfirst+i) % SEQSPACE]);
     packets_resent++;
     if (i==0) starttimer(A,RTT);
   }
@@ -259,10 +257,6 @@ void B_init(void)
   expectedseqnum = 0;
   B_nextseqnum = 1;
 }
-
-/******************************************************************************
- * The following functions need be completed only for bi-directional messages *
- *****************************************************************************/
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 void B_output(struct msg message)
