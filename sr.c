@@ -217,6 +217,9 @@ void A_init(void)
 
 /********* Receiver (B)  variables and procedures ************/
 
+static struct pkt bufferB[SEQSPACE];
+static bool received[SEQSPACE];
+
 static int expectedseqnum; /* the sequence number expected next by the receiver */
 static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
 
