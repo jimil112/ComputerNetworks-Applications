@@ -23,7 +23,8 @@
 int ComputeChecksum(struct pkt packet)
 {
   int checksum = 0;
-  for (int i = 0; i < 20; i++)
+  int i;
+  for (i = 0; i < 20; i++)
     checksum += (int)(packet.payload[i]);
   checksum += packet.seqnum + packet.acknum;
   return checksum;
@@ -47,9 +48,10 @@ static int nextseqnum;                        /* next sequence number to send */
 /* A_init: called once before any other sender routine */
 void A_init(void)
 {
+  int i;
   base = 0;
   nextseqnum = 0;
-  for (int i = 0; i < SEQSPACE; i++) {
+  for (i = 0; i < SEQSPACE; i++) {
     packet_sent[i] = false;
     packet_acked[i] = false;
   }
@@ -63,10 +65,11 @@ void A_output(struct msg message)
   /* if within window, send packet */
   if (window_size < WINDOWSIZE) {
     struct pkt packet;
+    int i;
     packet.seqnum = nextseqnum;
     packet.acknum = NOTINUSE;
 
-    for (int i = 0; i < 20; i++)
+    for (i = 0; i < 20; i++)
       packet.payload[i] = message.data[i];
     packet.checksum = ComputeChecksum(packet);
 
@@ -132,7 +135,8 @@ void A_timerinterrupt(void)
   if (TRACE > 0)
     printf("----A: Timer interrupt, resending all unACKed packets in window\n");
 
-  for (int i = 0; i < WINDOWSIZE; i++) {
+  int i;
+  for (i = 0; i < WINDOWSIZE; i++) {
     int seq = (base + i) % SEQSPACE;
 
     if (packet_sent[seq] && !packet_acked[seq]) {
@@ -156,6 +160,7 @@ static int B_nextseqnum;   /* the sequence number for the next packets sent by B
 void B_input(struct pkt packet)
 {
   struct pkt sendpkt;
+  int i;
 
   /* if not corrupted and in-order */
   if (!IsCorrupted(packet) && packet.seqnum == expectedseqnum) {
@@ -177,7 +182,7 @@ void B_input(struct pkt packet)
   sendpkt.seqnum = B_nextseqnum;
   B_nextseqnum = (B_nextseqnum + 1) % 2;
 
-  for (int i = 0; i < 20; i++)
+  for (i = 0; i < 20; i++)
     sendpkt.payload[i] = '0';
 
   sendpkt.checksum = ComputeChecksum(sendpkt);
