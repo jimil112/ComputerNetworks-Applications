@@ -94,6 +94,9 @@ void A_output(struct msg message)
       printf("Sending packet %d to layer 3\n", sendpkt.seqnum);
     tolayer3(A, sendpkt);
 
+    if (TRACE > 0)
+      printf("----A: sent packet %d\n", sendpkt.seqnum);
+
     /* start timer if no timer is running */
     any_timer_running = FALSE;
     for (j = 0; j < SEQSPACE; j++) {
@@ -119,9 +122,6 @@ void A_output(struct msg message)
 /* called from layer 3, when a packet arrives for layer 4
    In this practical this will always be an ACK as B never sends data.
 */
-/* called from layer 3, when a packet arrives for layer 4
-   In this practical this will always be an ACK as B never sends data.
-*/
 void A_input(struct pkt packet)
 {
   int i;
@@ -137,6 +137,8 @@ void A_input(struct pkt packet)
       new_ACKs++;
       if (TRACE > 0)
         printf("----A: ACK %d is not a duplicate\n", packet.acknum);
+      if (TRACE > 0)
+        printf("----A: ACK %d marked as received\n", packet.acknum);
     } else {
       if (TRACE > 0)
         printf("----A: duplicate ACK received, do nothing!\n");
@@ -148,6 +150,8 @@ void A_input(struct pkt packet)
       timer_active[buffer[windowfirst].seqnum] = FALSE;
       windowfirst = (windowfirst + 1) % SEQSPACE;
       windowcount--;
+      if (TRACE > 0)
+        printf("----A: window slid to index %d\n", windowfirst);
     }
 
     stoptimer(A);
@@ -158,7 +162,6 @@ void A_input(struct pkt packet)
       printf("----A: corrupted ACK is received, do nothing!\n");
   }
 }
-
 
 /* called when A's timer goes off */
 void A_timerinterrupt(void)
@@ -183,7 +186,6 @@ void A_timerinterrupt(void)
     }
   }
 }
-
 
 /* the following routine will be called once (only) before any other */
 /* entity A routines are called. You can use it to do any initialization */
@@ -210,7 +212,6 @@ static int received[SEQSPACE];
 static int expectedseqnum; /* the sequence number expected next by the receiver */
 static int B_nextseqnum;   /* the sequence number for the next packets sent by B */
 
-
 /* called from layer 3, when a packet arrives for layer 4 at B*/
 void B_input(struct pkt packet)
 {
@@ -225,6 +226,8 @@ void B_input(struct pkt packet)
 
       if (TRACE > 0)
         printf("----B: packet %d is correctly received\n", packet.seqnum);
+      if (TRACE > 0)
+        printf("----B: buffered packet %d\n", packet.seqnum);
     }
 
     /* deliver in-order packets starting from expectedseqnum */
@@ -240,7 +243,7 @@ void B_input(struct pkt packet)
 
     ackpkt.acknum = (expectedseqnum + SEQSPACE - 1) % SEQSPACE;
   } else {
-   
+
     if (TRACE > 0)
       printf("----B: packet corrupted, resend ACK!\n");
     ackpkt.acknum = (expectedseqnum + SEQSPACE - 1) % SEQSPACE;
@@ -250,7 +253,6 @@ void B_input(struct pkt packet)
   ackpkt.seqnum = B_nextseqnum;
   B_nextseqnum = (B_nextseqnum + 1) % 2;
 
-  
   for (i = 0; i < 20; i++)
     ackpkt.payload[i] = '0';
 
@@ -259,9 +261,10 @@ void B_input(struct pkt packet)
 
   /* send out packet */
   tolayer3(B, ackpkt);
+
+  if (TRACE > 0)
+    printf("----B: sending ACK %d\n", ackpkt.acknum);
 }
-
-
 
 /* the following routine will be called once (only) before any other */
 /* entity B routines are called. You can use it to do any initialization */
@@ -276,7 +279,6 @@ void B_init(void)
     bufferB[i].seqnum = NOTINUSE;
   }
 }
-
 
 /* Note that with simplex transfer from a-to-B, there is no B_output() */
 void B_output(struct msg message)
