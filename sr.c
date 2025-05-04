@@ -150,7 +150,8 @@ void A_input(struct pkt packet)
           ackcount = SEQSPACE - seqfirst + packet.acknum;
 
         /* slide window by the number of packets ACKed */
-        windowfirst = (windowfirst + ackcount) % WINDOWSIZE;
+        windowfirst = (windowfirst + ackcount) % SEQSPACE;
+
 
         /* delete the acked packets from window buffer */
         for (i = 0; i < ackcount; i++)
