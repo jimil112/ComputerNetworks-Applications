@@ -81,13 +81,22 @@ void A_output(struct msg message)
 
     buffer[A_nextseqnum] = sendpkt;
     acked[A_nextseqnum] = false;
+    timer_active[A_nextseqnum] = true;
 
     tolayer3(A, sendpkt);
     if (TRACE > 0)
       printf("Sending packet %d to layer 3\n", sendpkt.seqnum);
 
-    starttimer(A, RTT);  // One global timer (emulator limitation)
-    timer_active[A_nextseqnum] = true;
+    bool any_timer_running = false;
+    for (int j = 0; j < SEQSPACE; j++) {
+      if (timer_active[j]) {
+        any_timer_running = true;
+        break;
+      }
+    }
+    if (!any_timer_running) {
+      starttimer(A, RTT);
+    }
 
     A_nextseqnum = (A_nextseqnum + 1) % SEQSPACE;
     windowcount++;
@@ -98,6 +107,7 @@ void A_output(struct msg message)
     window_full++;
   }
 }
+
 
 
 
