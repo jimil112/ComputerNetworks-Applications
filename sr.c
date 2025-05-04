@@ -191,9 +191,11 @@ void A_timerinterrupt(void)
     tolayer3(A, buffer[resend_seq]);
     packets_resent++;
     starttimer(A, RTT);
+  } else {
+    if (TRACE > 0)
+      printf("----A: no unACKed packet found, no retransmission needed\n");
   }
 }
-
 
 
 
